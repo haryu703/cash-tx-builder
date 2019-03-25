@@ -1,3 +1,8 @@
 /target
 **/*.rs.bk
 .vscode
+
+# coverage
+ccov.zip
+report/
+lcov.info
