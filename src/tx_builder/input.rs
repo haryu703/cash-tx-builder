@@ -1,5 +1,6 @@
 use super::var_int::VarInt;
 
+#[derive(Debug)]
 pub struct Input {
     pub prev_txid: [u8; 32],
     pub prev_index: u32,

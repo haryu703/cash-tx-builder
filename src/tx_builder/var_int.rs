@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct VarInt(Vec<u8>);
 
 impl From<VarInt> for Vec<u8> {
@@ -9,16 +10,16 @@ impl From<VarInt> for Vec<u8> {
 impl From<usize> for VarInt {
     fn from(num: usize) -> VarInt {
         match num {
-            n @ 0x00...0xfc => {
+            n @ 0x00..=0xfc => {
                 VarInt([n as u8; 1].to_vec())
             },
-            n @ 0xfd...0xffff => {
+            n @ 0xfd..=0xffff => {
                 let mut v = [0; 3];
                 v[0] = 0xfdu8;
                 v[1..].copy_from_slice(&(n as u16).to_le_bytes());
                 VarInt(v.to_vec())
             },
-            n @ 0x10000...0xffff_ffff => {
+            n @ 0x10000..=0xffff_ffff => {
                 let mut v = [0; 5];
                 v[0] = 0xfeu8;
                 v[1..].copy_from_slice(&(n as u32).to_le_bytes());

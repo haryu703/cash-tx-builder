@@ -1,6 +1,7 @@
-#[allow(non_camel_case_types)]
+#![allow(non_camel_case_types, missing_docs)]
+
+/// [Script opcodes](https://github.com/Bitcoin-ABC/bitcoin-abc/blob/master/src/script/script.h#L42)
 #[derive(Clone, Copy, Debug)]
-// https://github.com/Bitcoin-ABC/bitcoin-abc/blob/master/src/script/script.h#L42
 pub enum OpCode {
     // push value
     OP_0 = 0x00,

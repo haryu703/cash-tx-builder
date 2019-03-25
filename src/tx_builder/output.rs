@@ -1,5 +1,6 @@
 use super::var_int::VarInt;
 
+#[derive(Debug)]
 pub struct Output {
     pub value: u64,
     pub script: Vec<u8>,

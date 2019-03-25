@@ -13,7 +13,9 @@ use sha2::{Sha256, Digest};
 use super::bit_util::BitUtil;
 use super::uint256::uint256;
 
+/// sighash type
 pub mod sig_hash {
+    #![allow(missing_docs)]
     pub const ALL: u32 = 0x01;
     pub const NONE: u32 = 0x02;
     pub const SINGLE: u32 = 0x03;
@@ -21,6 +23,8 @@ pub mod sig_hash {
     pub const ANYONECANPAY: u32 = 0x80;
 }
 
+/// Transaction builder
+#[derive(Debug)]
 pub struct TxBuilder<'a> {
     version: u32,
     inputs: Vec<Input>,
@@ -32,7 +36,7 @@ pub struct TxBuilder<'a> {
 }
 
 impl<'a> From<&TxBuilder<'a>> for Vec<u8> {
-    fn from(tb: &TxBuilder) -> Vec<u8> {
+    fn from(tb: &TxBuilder<'_>) -> Vec<u8> {
         [
             tb.version.to_le_bytes().to_vec(),
             VarInt::from(tb.inputs.len()).into(),
@@ -49,6 +53,16 @@ impl<'a> From<&TxBuilder<'a>> for Vec<u8> {
 // }
 
 impl<'a> TxBuilder<'a> {
+    /// Construct new transaction builder
+    /// # Arguments
+    /// * `address_converter` - address converter
+    /// # Example
+    /// ```
+    /// use bch_addr::Converter;
+    /// use cash_tx_builder::TxBuilder;
+    /// let converter = Converter::new();
+    /// let txb = TxBuilder::new(&converter);
+    /// ```
     pub fn new(address_converter: &'a bch_addr::Converter) -> TxBuilder<'a> {
         TxBuilder {
             version: 2,
@@ -61,14 +75,61 @@ impl<'a> TxBuilder<'a> {
         }
     }
 
+    /// Set transaction version (default: 2)
+    /// # Arguments
+    /// `v` - version
+    /// # Example
+    /// ```
+    /// # use bch_addr::Converter;
+    /// # use cash_tx_builder::TxBuilder;
+    /// let converter = Converter::new();
+    /// let mut txb = TxBuilder::new(&converter);
+    /// txb.set_version(1);
+    /// assert_eq!(txb.to_vec()[0..4], (0x01 as u32).to_le_bytes());
+    /// ```
     pub fn set_version(&mut self, v: u32) {
         self.version = v;
     }
 
+    /// Set fork id (default: 0)
+    /// # Arguments
+    /// * `id` - forkid
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate hex_literal;
+    /// # use bch_addr::Converter;
+    /// # use cash_tx_builder::{TxBuilder, sig_hash};
+    /// # use cash_tx_builder::script::{address_to_script, p2pkh};
+    /// # let converter = Converter::new();
+    /// # let mut txb = TxBuilder::new(&converter);
+    /// # let prev_txid = "427cfc8a960e6a33552c19bcfcbe9d59207248856fb8806ba9c7043421e1ee4c";
+    /// # let prev_index = 1;
+    /// # let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &converter).unwrap();
+    /// # let prev_value = 100_000;
+    /// # txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
+    /// # txb.add_address_output(11000, "qqntvyp35r7l8julzldgh8qlc49x8rpkjyh4nz5ty3").unwrap();
+    /// # txb.add_address_output(88757, "qqny0aeaayxca8d4khmh68xp44d0aqwk3sk3zpzs70").unwrap();
+    /// # let script_sig = p2pkh::script_sig(
+    /// #     &hex!("0366be8427eddf9341141e5bb10486e41b1f3b33101ab3d5e816c37f30f2ddb036"),
+    /// #     &hex!("304402202dacf747f6ddc911b755938a07232cfa34057f7a336f72346c438c04f4d5dbc502206a7915ce8569ab5832dae89275bdc13f2467a69684643704f1a9a38b34d55b3041")
+    /// # ).unwrap();
+    /// # txb.set_script_sig(0, &script_sig).unwrap();
+    /// let hash_type = sig_hash::ALL | sig_hash::FORKID;
+    /// txb.set_fork_id(1);
+    /// let sighash = txb.witness_v0_hash(hash_type, 0).unwrap();
+    /// assert_eq!(sighash, hex!("e99f87c70a16dfa390ea0ddd0748709a8548b7b97c62f91754d74264c687db62"));
+    /// ```
     pub fn set_fork_id(&mut self, id: u32) {
         self.fork_id = id;
     }
 
+    /// Add input
+    /// # Arguments
+    /// * `txid` - previous transaction hash
+    /// * `index` - previous txout-index
+    /// * `value` - previous value
+    /// * `script` - previous `scriptPubKey`
+    /// * `sequence_no`- sequence number or `None` 
     pub fn add_input(&mut self, txid: &str, index: u32, value: u64, script: &[u8], sequence_no: Option<u32>) -> Result<()> {
         let txid = uint256::try_from(txid)?;
         self.inputs.push(Input::new(&txid.into(), index, sequence_no));
@@ -77,32 +138,75 @@ impl<'a> TxBuilder<'a> {
         Ok(())
     }
 
+    /// Set `scriptSig`
+    /// # Arguments
+    /// * `index` - previous txout-index
+    /// * `script` - `scriptSig`
     pub fn set_script_sig(&mut self, index: usize, script: &[u8]) -> Result<()> {
         let input = self.inputs.get_mut(index).ok_or_else(|| Error::InvalidIndex(index))?;
         input.set_script(script);
         Ok(())
     }
 
+    /// Add output by bitcoin address
+    /// # Arguments
+    /// * `value` - satoshi
+    /// * `address` - bitcoin address
     pub fn add_address_output(&mut self, value: u64, address: &str) -> Result<()> {
         let script = address_to_script(address, self.address_converter)?;
         self.add_output(value, &script);
         Ok(())
     }
 
-    pub fn add_null_data_output(&mut self, value: u64, data: &[u8]) -> Result<()> {
+    /// Add output by null data
+    /// # Arguments
+    /// * `data` - extra data
+    /// # Example
+    /// ```
+    /// # use bch_addr::Converter;
+    /// # use cash_tx_builder::TxBuilder;
+    /// let converter = Converter::new();
+    /// let mut txb = TxBuilder::new(&converter);
+    /// txb.add_null_data_output(b"hoge");
+    /// assert_eq!(&txb.to_vec()[17..21], b"hoge");
+    /// ```
+    pub fn add_null_data_output(&mut self, data: &[u8]) -> Result<()> {
         let script = null_data_script(data)?;
-        self.add_output(value, &script);
+        self.add_output(0, &script);
         Ok(())
     }
 
+    /// Add output by null data
+    /// # Arguments
+    /// * `value` - satoshi
+    /// * `script` - `scriptPubKey`
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate hex_literal;
+    /// # use bch_addr::Converter;
+    /// # use cash_tx_builder::TxBuilder;
+    /// let converter = Converter::new();
+    /// let mut txb = TxBuilder::new(&converter);
+    /// let script = hex!("76a91432b57f34861bcbe33a701be9ac3a50288fbc0a3d88ac");
+    /// txb.add_output(1000, &script);
+    /// assert_eq!(&txb.to_vec()[15..40], script);
+    /// ```
     pub fn add_output(&mut self, value: u64, script: &[u8]) {
         self.outputs.push(Output::new(value, script));
     }
 
+    /// Convert to `Vec<u8>`
+    /// # Returns
+    /// * serialized transaction
     pub fn to_vec(&self) -> Vec<u8> {
         Vec::from(self)
     }
 
+    /// Get digest according to bip143  
+    /// [spec](https://github.com/Bitcoin-ABC/bitcoin-abc/blob/master/doc/abc/replay-protected-sighash.md)
+    /// # Arguments
+    /// * `hash_type` - sighash type
+    /// * `index` - input index
     pub fn witness_v0_hash(&self, hash_type: u32, index: u32) -> Result<Vec<u8>> {
         let hash_prev_outs = if !hash_type.is_set(sig_hash::ANYONECANPAY) {
             let hasher = self.inputs.iter().fold(Sha256::new(), |hasher, i| {
@@ -157,6 +261,9 @@ impl<'a> TxBuilder<'a> {
         Ok(hash::hash256(hasher))
     }
 
+    /// Get txid
+    /// # Returns
+    /// * txid
     pub fn txid(&self) -> String {
         let hash = hash::hash256(Sha256::new().chain(self.to_vec()));
         uint256::from(hash).into()

@@ -1,3 +1,5 @@
+//! utility of bitcoin script
+
 pub mod p2pkh;
 pub mod p2sh;
 
@@ -7,8 +9,12 @@ use super::opcode::OpCode;
 use OpCode::*;
 use super::error::{Error, Result};
 
+/// Element to build bitcoin script
+#[derive(Debug)]
 pub enum Script<'a> {
+    /// op code
     OpCode(OpCode),
+    /// data
     Data(&'a [u8]),
 }
 
@@ -25,21 +31,21 @@ fn push_data(data: &[u8], v: &mut Vec<u8>) -> Result<()> {
         1 if data[0] <= 16 => {
             v.push(DATA_OPCODE[data[0] as usize] as u8);
         },
-        l @ 0x11...0x4b => {
+        l @ 0x00..=0x4b => {
             v.push(l as u8);
             v.extend(data);
         },
-        l @ 0x4c...0xff => {
+        l @ 0x4c..=0xff => {
             v.push(OP_PUSHDATA1 as u8);
             v.extend(&(l as u8).to_le_bytes());
             v.extend(data);
         },
-        l @ 0x100...0xffff => {
+        l @ 0x100..=0xffff => {
             v.push(OP_PUSHDATA2 as u8);
             v.extend(&(l as u16).to_le_bytes());
             v.extend(data);
         },
-        l @ 0x10000...0xffff_ffff => {
+        l @ 0x10000..=0xffff_ffff => {
             v.push(OP_PUSHDATA4 as u8);
             v.extend(&(l as u32).to_le_bytes());
             v.extend(data);
@@ -49,7 +55,27 @@ fn push_data(data: &[u8], v: &mut Vec<u8>) -> Result<()> {
     Ok(())
 }
 
-pub fn encode(scripts: &[Script]) -> Result<Vec<u8>> {
+/// Build raw script from scripts
+/// # Arguments
+/// * `scripts` - array of `Script`
+/// # Returns
+/// * raw script
+/// # Example
+/// ```
+/// # #[macro_use] extern crate hex_literal;
+/// # use cash_tx_builder::script::{Script, encode};
+/// # use cash_tx_builder::OpCode::*;
+/// let scripts = [
+///     Script::OpCode(OP_DUP),
+///     Script::OpCode(OP_HASH160),
+///     Script::Data(&hex!("023a723c9e8b8297d84f6ab7dc08784c36b0729a")),
+///     Script::OpCode(OP_EQUALVERIFY),
+///     Script::OpCode(OP_CHECKSIG),
+/// ];
+/// let encoded = encode(&scripts).unwrap();
+/// assert_eq!(encoded, hex!("76a914023a723c9e8b8297d84f6ab7dc08784c36b0729a88ac"));
+/// ```
+pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
     scripts.iter().try_fold(Vec::new(), |mut v, script| {
         match script {
             Script::OpCode(op) => {
@@ -63,6 +89,28 @@ pub fn encode(scripts: &[Script]) -> Result<Vec<u8>> {
     })
 }
 
+/// Convert address to `scriptPubKey`
+/// # Arguments
+/// * `address` - bitcoin address
+/// * `converter` - address converter
+/// # Returns
+/// * `scriptPubKey`
+/// # Example
+/// ```
+/// # #[macro_use] extern crate hex_literal;
+/// # use bch_addr::Converter;
+/// # use cash_tx_builder::script::address_to_script;
+/// let converter = Converter::new();
+/// 
+/// let p2pkh = "bitcoincash:qph5kuz78czq00e3t85ugpgd7xmer5kr7c5f6jdpwk";
+/// let p2sh = "bitcoincash:pph5kuz78czq00e3t85ugpgd7xmer5kr7crv8a2z4t";
+/// 
+/// let p2pkh_script = address_to_script(p2pkh, &converter).unwrap();
+/// let p2sh_script = address_to_script(p2sh, &converter).unwrap();
+/// 
+/// assert_eq!(p2pkh_script, hex!("76a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f688ac"));
+/// assert_eq!(p2sh_script, hex!("a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f687"));
+/// ```
 pub fn address_to_script(address: &str, converter: &Converter) -> Result<Vec<u8>>{
     let (_, _, addr_type, hash) = converter.parse(address)?;
 
@@ -76,6 +124,19 @@ pub fn address_to_script(address: &str, converter: &Converter) -> Result<Vec<u8>
     }
 }
 
+/// Build `scriptPubKey` from `null data`
+/// # Arguments
+/// * `data` - null data
+/// # Returns
+/// * `scriptPubKey`
+/// # Example
+/// ```
+/// # #[macro_use] extern crate hex_literal;
+/// # use cash_tx_builder::script::null_data_script;
+/// let data = hex!("1234567890");
+/// let script_pub_key = null_data_script(&data).unwrap();
+/// assert_eq!(script_pub_key, hex!("6a051234567890"));
+/// ```
 pub fn null_data_script(data: &[u8]) -> Result<Vec<u8>> {
     encode(&[
         Script::OpCode(OP_RETURN),
