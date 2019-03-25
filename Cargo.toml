@@ -1,8 +1,14 @@
 [package]
 name = "cash_tx_builder"
 version = "0.1.0"
-authors = ["haryu703 <34744512+haryu703@users.noreply.github.com>"]
+authors = ["haryu703"]
 edition = "2018"
+
+license = "MIT"
+description = "Transaction builder for Bitcoin Cash"
+repository = "https://github.com/haryu703/cash-tx-builder"
+readme = "README.md"
+keywords = ["bitcoin", "cash", "BCH"]
 
 [dependencies]
 failure = "0.1.5"
