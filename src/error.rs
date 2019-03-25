@@ -1,7 +1,6 @@
 use std::result;
 
 use failure::Fail;
-use bch_addr;
 use hex;
 
 /// Alias of `Result` used by cash_tx_builder.
@@ -22,23 +21,17 @@ pub enum Error {
     #[fail(display = "Invalid lenght data: {}", 0)]
     InvalidLengthData(usize),
 
-    /// bch_addr library's error.
+    /// Invalid bitcoin address.
     /// # Arguments
-    /// * error
-    #[fail(display = "bch_addr error: {}", 0)]
-    BchAddrError(bch_addr::Error),
+    /// * address
+    #[fail(display = "Invalid address: {}", 0)]
+    InvalidAddress(String),
 
     /// hex library's error.
     /// # Arguments
     /// * error
     #[fail(display = "hex error: {}", 0)]
     HexError(hex::FromHexError),
-}
-
-impl From<bch_addr::Error> for Error {
-    fn from(err: bch_addr::Error) -> Error {
-        Error::BchAddrError(err)
-    }
 }
 
 impl From<hex::FromHexError> for Error {

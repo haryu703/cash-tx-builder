@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 failure = "0.1.5"
-bch_addr = "0.1.0"
 sha2 = "0.8.0"
 hex = "0.3.2"
 
 [dev-dependencies]
 hex-literal = "0.1.4"
+bch_addr = "0.1.0"

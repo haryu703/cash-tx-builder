@@ -3,8 +3,6 @@
 pub mod p2pkh;
 pub mod p2sh;
 
-use bch_addr::{Converter, AddressType};
-
 use super::opcode::OpCode;
 use OpCode::*;
 use super::error::{Error, Result};
@@ -98,29 +96,36 @@ pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
 /// # Example
 /// ```
 /// # #[macro_use] extern crate hex_literal;
-/// # use bch_addr::Converter;
+/// # use bch_addr::{AddressType, Converter};
 /// # use cash_tx_builder::script::address_to_script;
 /// let converter = Converter::new();
+/// let parser = |address: &str| {
+///     let parsed = converter.parse(address).ok();
+///     match parsed {
+///         Some((_, _, address_type, hash)) => {
+///             Some((hash, address_type == AddressType::P2PKH))
+///         }
+///         None => None
+///     }
+/// };
 /// 
 /// let p2pkh = "bitcoincash:qph5kuz78czq00e3t85ugpgd7xmer5kr7c5f6jdpwk";
 /// let p2sh = "bitcoincash:pph5kuz78czq00e3t85ugpgd7xmer5kr7crv8a2z4t";
 /// 
-/// let p2pkh_script = address_to_script(p2pkh, &converter).unwrap();
-/// let p2sh_script = address_to_script(p2sh, &converter).unwrap();
+/// let p2pkh_script = address_to_script(p2pkh, &parser).unwrap();
+/// let p2sh_script = address_to_script(p2sh, &parser).unwrap();
 /// 
 /// assert_eq!(p2pkh_script, hex!("76a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f688ac"));
 /// assert_eq!(p2sh_script, hex!("a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f687"));
 /// ```
-pub fn address_to_script(address: &str, converter: &Converter) -> Result<Vec<u8>>{
-    let (_, _, addr_type, hash) = converter.parse(address)?;
+pub fn address_to_script<F>(address: &str, parser: &F) -> Result<Vec<u8>>
+    where F: Fn(&str) -> Option<(Vec<u8>, bool)> {
+    let (hash, is_pkh) = parser(address).ok_or_else(|| Error::InvalidAddress(address.to_string()))?;
 
-    match addr_type {
-        AddressType::P2PKH => {
-            p2pkh::script_pub_key(&hash)
-        },
-        AddressType::P2SH => {
-            p2sh::script_pub_key(&hash)
-        },
+    if is_pkh {
+        p2pkh::script_pub_key(&hash)
+    } else {
+        p2sh::script_pub_key(&hash)
     }
 }
 
@@ -147,11 +152,21 @@ pub fn null_data_script(data: &[u8]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bch_addr::{AddressType, Converter};
 
     #[test]
     fn get_p2pkh() {
         let converter = Converter::new();
-        let script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &converter).unwrap();
+        let parser = |address: &str| {
+            let parsed = converter.parse(address).ok();
+            match parsed {
+                Some((_, _, address_type, hash)) => {
+                    Some((hash, address_type == AddressType::P2PKH))
+                }
+                None => None
+            }
+        };
+        let script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
         assert_eq!(script, hex!("76a9143424f163208a3b676fa0ec17034f0f290322a2a688ac"));
     }
 }

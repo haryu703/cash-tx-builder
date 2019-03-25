@@ -6,12 +6,13 @@ use input::Input;
 use output::Output;
 use var_int::VarInt;
 use super::error::{Error, Result};
-use bch_addr;
 use super::script::{Script, address_to_script, null_data_script, encode};
 use super::hash;
 use sha2::{Sha256, Digest};
 use super::bit_util::BitUtil;
 use super::uint256::uint256;
+
+use std::option::Option;
 
 /// sighash type
 pub mod sig_hash {
@@ -25,18 +26,19 @@ pub mod sig_hash {
 
 /// Transaction builder
 #[derive(Debug)]
-pub struct TxBuilder<'a> {
+pub struct TxBuilder<F> 
+        where F: Fn(&str) -> Option<(Vec<u8>, bool)> {
     version: u32,
     inputs: Vec<Input>,
     prev_outputs: Vec<Output>,
     outputs: Vec<Output>,
     lock_time: u32,
     fork_id: u32,
-    address_converter: &'a bch_addr::Converter,
+    address_parser: F,
 }
 
-impl<'a> From<&TxBuilder<'a>> for Vec<u8> {
-    fn from(tb: &TxBuilder<'_>) -> Vec<u8> {
+impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> From<&TxBuilder<F>> for Vec<u8> {
+    fn from(tb: &TxBuilder<F>) -> Vec<u8> {
         [
             tb.version.to_le_bytes().to_vec(),
             VarInt::from(tb.inputs.len()).into(),
@@ -52,18 +54,18 @@ impl<'a> From<&TxBuilder<'a>> for Vec<u8> {
 //     fn from(v: Vec<u8>) -> TxBuilder {}
 // }
 
-impl<'a> TxBuilder<'a> {
+impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// Construct new transaction builder
     /// # Arguments
-    /// * `address_converter` - address converter
-    /// # Example
-    /// ```
-    /// use bch_addr::Converter;
-    /// use cash_tx_builder::TxBuilder;
-    /// let converter = Converter::new();
-    /// let txb = TxBuilder::new(&converter);
-    /// ```
-    pub fn new(address_converter: &'a bch_addr::Converter) -> TxBuilder<'a> {
+    /// * `address_parser` - address parser closure
+    ///     ## Arguments
+    ///     * address
+    ///     ## Returns
+    ///     * hashed `public key` or hashed `redeem script`
+    ///     * `true` if address is P2PKH, `false` if address is P2SH
+    /// 
+    ///     or `None`
+    pub fn new(address_parser: F) -> TxBuilder<F> {
         TxBuilder {
             version: 2,
             inputs: vec![],
@@ -71,7 +73,7 @@ impl<'a> TxBuilder<'a> {
             outputs: vec![],
             lock_time: 0,
             fork_id: 0,
-            address_converter,
+            address_parser,
         }
     }
 
@@ -80,10 +82,19 @@ impl<'a> TxBuilder<'a> {
     /// `v` - version
     /// # Example
     /// ```
-    /// # use bch_addr::Converter;
+    /// # use bch_addr::{AddressType, Converter};
     /// # use cash_tx_builder::TxBuilder;
-    /// let converter = Converter::new();
-    /// let mut txb = TxBuilder::new(&converter);
+    /// # let converter = Converter::new();
+    /// # let parser = |address: &str| {
+    /// #     let parsed = converter.parse(address).ok();
+    /// #     match parsed {
+    /// #         Some((_, _, address_type, hash)) => {
+    /// #             Some((hash, address_type == AddressType::P2PKH))
+    /// #         }
+    /// #         None => None
+    /// #     }
+    /// # };
+    /// # let mut txb = TxBuilder::new(&parser);
     /// txb.set_version(1);
     /// assert_eq!(txb.to_vec()[0..4], (0x01 as u32).to_le_bytes());
     /// ```
@@ -97,14 +108,23 @@ impl<'a> TxBuilder<'a> {
     /// # Example
     /// ```
     /// # #[macro_use] extern crate hex_literal;
-    /// # use bch_addr::Converter;
+    /// # use bch_addr::{AddressType, Converter};
     /// # use cash_tx_builder::{TxBuilder, sig_hash};
     /// # use cash_tx_builder::script::{address_to_script, p2pkh};
     /// # let converter = Converter::new();
-    /// # let mut txb = TxBuilder::new(&converter);
+    /// # let parser = |address: &str| {
+    /// #     let parsed = converter.parse(address).ok();
+    /// #     match parsed {
+    /// #         Some((_, _, address_type, hash)) => {
+    /// #             Some((hash, address_type == AddressType::P2PKH))
+    /// #         }
+    /// #         None => None
+    /// #     }
+    /// # };
+    /// # let mut txb = TxBuilder::new(&parser);
     /// # let prev_txid = "427cfc8a960e6a33552c19bcfcbe9d59207248856fb8806ba9c7043421e1ee4c";
     /// # let prev_index = 1;
-    /// # let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &converter).unwrap();
+    /// # let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
     /// # let prev_value = 100_000;
     /// # txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
     /// # txb.add_address_output(11000, "qqntvyp35r7l8julzldgh8qlc49x8rpkjyh4nz5ty3").unwrap();
@@ -153,7 +173,7 @@ impl<'a> TxBuilder<'a> {
     /// * `value` - satoshi
     /// * `address` - bitcoin address
     pub fn add_address_output(&mut self, value: u64, address: &str) -> Result<()> {
-        let script = address_to_script(address, self.address_converter)?;
+        let script = address_to_script(address, &self.address_parser)?;
         self.add_output(value, &script);
         Ok(())
     }
@@ -163,10 +183,19 @@ impl<'a> TxBuilder<'a> {
     /// * `data` - extra data
     /// # Example
     /// ```
-    /// # use bch_addr::Converter;
+    /// # use bch_addr::{AddressType, Converter};
     /// # use cash_tx_builder::TxBuilder;
-    /// let converter = Converter::new();
-    /// let mut txb = TxBuilder::new(&converter);
+    /// # let converter = Converter::new();
+    /// # let parser = |address: &str| {
+    /// #     let parsed = converter.parse(address).ok();
+    /// #     match parsed {
+    /// #         Some((_, _, address_type, hash)) => {
+    /// #             Some((hash, address_type == AddressType::P2PKH))
+    /// #         }
+    /// #         None => None
+    /// #     }
+    /// # };
+    /// # let mut txb = TxBuilder::new(&parser);
     /// txb.add_null_data_output(b"hoge");
     /// assert_eq!(&txb.to_vec()[17..21], b"hoge");
     /// ```
@@ -183,10 +212,19 @@ impl<'a> TxBuilder<'a> {
     /// # Example
     /// ```
     /// # #[macro_use] extern crate hex_literal;
-    /// # use bch_addr::Converter;
+    /// # use bch_addr::{AddressType, Converter};
     /// # use cash_tx_builder::TxBuilder;
-    /// let converter = Converter::new();
-    /// let mut txb = TxBuilder::new(&converter);
+    /// # let converter = Converter::new();
+    /// # let parser = |address: &str| {
+    /// #     let parsed = converter.parse(address).ok();
+    /// #     match parsed {
+    /// #         Some((_, _, address_type, hash)) => {
+    /// #             Some((hash, address_type == AddressType::P2PKH))
+    /// #         }
+    /// #         None => None
+    /// #     }
+    /// # };
+    /// # let mut txb = TxBuilder::new(&parser);
     /// let script = hex!("76a91432b57f34861bcbe33a701be9ac3a50288fbc0a3d88ac");
     /// txb.add_output(1000, &script);
     /// assert_eq!(&txb.to_vec()[15..40], script);
@@ -274,14 +312,25 @@ impl<'a> TxBuilder<'a> {
 mod tests {
     use super::*;
     use super::super::script::p2pkh;
+    use bch_addr::{AddressType, Converter};
 
     #[test]
     fn get_digest() {
-        let converter = bch_addr::Converter::new();
-        let mut txb = TxBuilder::new(&converter);
+        let converter = Converter::new();
+        let parser = |address: &str| {
+            let parsed = converter.parse(address).ok();
+            match parsed {
+                Some((_, _, address_type, hash)) => {
+                    Some((hash, address_type == AddressType::P2PKH))
+                }
+                None => None
+            }
+        };
+
+        let mut txb = TxBuilder::new(&parser);
         let prev_txid = "427cfc8a960e6a33552c19bcfcbe9d59207248856fb8806ba9c7043421e1ee4c";
         let prev_index = 1;
-        let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &converter).unwrap();
+        let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
         let prev_value = 100_000;
 
         txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();

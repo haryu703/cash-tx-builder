@@ -8,15 +8,24 @@
 //! # Example
 //! ```
 //! #[macro_use] extern crate hex_literal;
-//! use bch_addr::Converter;
+//! use bch_addr::{AddressType, Converter};
 //! use cash_tx_builder::{TxBuilder, sig_hash};
 //! use cash_tx_builder::script::{address_to_script, p2pkh};
 //! 
-//! let converter = bch_addr::Converter::new();
-//! let mut txb = TxBuilder::new(&converter);
+//! let converter = Converter::new();
+//! let parser = |address: &str| {
+//!     let parsed = converter.parse(address).ok();
+//!     match parsed {
+//!         Some((_, _, address_type, hash)) => {
+//!             Some((hash, address_type == AddressType::P2PKH))
+//!         }
+//!         None => None
+//!     }
+//! };
+//! let mut txb = TxBuilder::new(&parser);
 //! let prev_txid = "427cfc8a960e6a33552c19bcfcbe9d59207248856fb8806ba9c7043421e1ee4c";
 //! let prev_index = 1;
-//! let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &converter).unwrap();
+//! let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
 //! let prev_value = 100_000;
 //! 
 //! txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
