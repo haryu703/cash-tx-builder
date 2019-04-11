@@ -1,4 +1,4 @@
-use super::var_int::VarInt;
+use super::super::var_int::VarInt;
 
 #[derive(Debug)]
 pub struct Input {
@@ -13,7 +13,7 @@ impl From<&Input> for Vec<u8> {
         [
             &i.prev_txid[..],
             &i.prev_index.to_le_bytes(),
-            &VarInt::from(i.script.len()).into_vec(),
+            &VarInt::from(i.script.len() as u64).into_vec(),
             &i.script,
             &i.sequence_no.to_le_bytes()[..],
         ].concat()

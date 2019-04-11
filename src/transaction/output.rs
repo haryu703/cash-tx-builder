@@ -1,4 +1,4 @@
-use super::var_int::VarInt;
+use super::super::var_int::VarInt;
 
 #[derive(Debug)]
 pub struct Output {
@@ -10,7 +10,7 @@ impl From<&Output> for Vec<u8> {
     fn from(o: &Output) -> Vec<u8> {
         [
             &o.value.to_le_bytes()[..],
-            &VarInt::from(o.script.len()).into_vec(),
+            &VarInt::from(o.script.len() as u64).into_vec(),
             &o.script,
         ].concat()
     }

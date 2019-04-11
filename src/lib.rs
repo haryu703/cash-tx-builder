@@ -28,7 +28,7 @@
 //! let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
 //! let prev_value = 100_000;
 //! 
-//! txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
+//! txb.add_input(prev_txid, prev_index, Some(prev_value), Some(&prev_script), None).unwrap();
 //! 
 //! txb.add_address_output(11000, "qqntvyp35r7l8julzldgh8qlc49x8rpkjyh4nz5ty3").unwrap();
 //! txb.add_address_output(88757, "qqny0aeaayxca8d4khmh68xp44d0aqwk3sk3zpzs70").unwrap();
@@ -40,7 +40,7 @@
 //! txb.set_script_sig(0, &script_sig).unwrap();
 //! 
 //! let hash_type = sig_hash::ALL | sig_hash::FORKID;
-//! let sighash = txb.witness_v0_hash(hash_type, 0).unwrap();
+//! let sighash = txb.witness_v0_hash(hash_type, 0, None, None).unwrap();
 //! let txid = txb.txid();
 //! 
 //! assert_eq!(sighash, hex!("2b492e7c4c8a3d670fd7fe324a87e3c55df1802c9a100f4006f8fff7c0913dd4"));
@@ -48,12 +48,14 @@
 //! ```
 
 mod tx_builder;
+mod transaction;
 mod error;
 mod opcode;
 pub mod script;
 mod hash;
 mod bit_util;
 mod uint256;
+mod var_int;
 
 #[cfg(test)]
 #[macro_use]
@@ -62,3 +64,5 @@ extern crate hex_literal;
 pub use error::{Error, Result};
 pub use opcode::OpCode;
 pub use tx_builder::{TxBuilder, sig_hash};
+pub use var_int::VarInt;
+pub use transaction::Transaction;
