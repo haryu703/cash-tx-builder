@@ -28,3 +28,20 @@ impl Output {
         self.into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn construct_test() {
+        let value = 10000;
+        let script = hex!("76a91492fc13573caf1bd38bd65738428406f4af80793a88ac");
+
+        let output = Output::new(value, &script);
+
+        assert_eq!(output.value, value);
+        assert_eq!(output.script, script);
+        assert_eq!(output.to_vec(), hex!("10270000000000001976a91492fc13573caf1bd38bd65738428406f4af80793a88ac").to_vec());
+    }
+}
