@@ -27,6 +27,13 @@ pub enum Error {
     #[fail(display = "Invalid address: {}", 0)]
     InvalidAddress(String),
 
+    /// Transaction parse error
+    /// # Arguments
+    /// * error index
+    /// * raw transaction
+    #[fail(display = "Transaction parse error: at {}, {:?}", 0, 1)]
+    TxParseError(usize, Vec<u8>),
+
     /// hex library's error.
     /// # Arguments
     /// * error

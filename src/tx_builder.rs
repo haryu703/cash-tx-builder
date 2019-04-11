@@ -1,18 +1,13 @@
-mod input;
-mod output;
-mod var_int;
-
-use input::Input;
-use output::Output;
-use var_int::VarInt;
+use std::collections::HashMap;
 use super::error::{Error, Result};
 use super::script::{Script, address_to_script, null_data_script, encode};
 use super::hash;
 use sha2::{Sha256, Digest};
 use super::bit_util::BitUtil;
 use super::uint256::uint256;
-
-use std::option::Option;
+use super::transaction::Transaction;
+use super::transaction::input::Input;
+use super::transaction::output::Output;
 
 /// sighash type
 pub mod sig_hash {
@@ -28,31 +23,11 @@ pub mod sig_hash {
 #[derive(Debug)]
 pub struct TxBuilder<F> 
         where F: Fn(&str) -> Option<(Vec<u8>, bool)> {
-    version: u32,
-    inputs: Vec<Input>,
-    prev_outputs: Vec<Output>,
-    outputs: Vec<Output>,
-    lock_time: u32,
+    tx: Transaction,
+    prev_outputs: HashMap<usize, Output>,
     fork_id: u32,
     address_parser: F,
 }
-
-impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> From<&TxBuilder<F>> for Vec<u8> {
-    fn from(tb: &TxBuilder<F>) -> Vec<u8> {
-        [
-            tb.version.to_le_bytes().to_vec(),
-            VarInt::from(tb.inputs.len()).into(),
-            tb.inputs.iter().flat_map(|p| p.to_vec()).collect(),
-            VarInt::from(tb.outputs.len()).into(),
-            tb.outputs.iter().flat_map(|p| p.to_vec()).collect(),
-            tb.lock_time.to_le_bytes().to_vec(),
-        ].concat()
-    }
-}
-
-// impl From<Vec<u8>> for TxBuilder {
-//     fn from(v: Vec<u8>) -> TxBuilder {}
-// }
 
 impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// Construct new transaction builder
@@ -67,14 +42,51 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     ///     or `None`
     pub fn new(address_parser: F) -> TxBuilder<F> {
         TxBuilder {
-            version: 2,
-            inputs: vec![],
-            prev_outputs: vec![],
-            outputs: vec![],
-            lock_time: 0,
+            tx: Transaction::new(),
+            prev_outputs: HashMap::new(),
             fork_id: 0,
             address_parser,
         }
+    }
+
+    /// Construct transaction builder from raw transaction
+    /// # Arguments
+    /// * `bytes` - raw transaction
+    /// * `address_parser` - address parser closure
+    ///     ## Arguments
+    ///     * address
+    ///     ## Returns
+    ///     * hashed `public key` or hashed `redeem script`
+    ///     * `true` if address is P2PKH, `false` if address is P2SH
+    /// 
+    ///     or `None`
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate hex_literal;
+    /// # use bch_addr::{AddressType, Converter};
+    /// # use cash_tx_builder::TxBuilder;
+    /// # let converter = Converter::new();
+    /// # let parser = |address: &str| {
+    /// #     let parsed = converter.parse(address).ok();
+    /// #     match parsed {
+    /// #         Some((_, _, address_type, hash)) => {
+    /// #             Some((hash, address_type == AddressType::P2PKH))
+    /// #         }
+    /// #         None => None
+    /// #     }
+    /// # };
+    /// let hex = hex!("0100000001339a4b15a25a107057a2aedba3655bfe9aca9dbfc8c4281adbff519764385569010000006a47304402204bdde4960e3733c64b8debc7c2ce609699e418de91e055594a7fd53f07e618b90220066f02e1f9a3e26e76ff4220de3b2b17dab63684c1fb9ef567ed2056ba3a96d44121030a7decd850db8d31c819bd34a0f9934f9c51e1f78718f59c886a3c8389c0d1deffffffff02d7f52d01000000001976a914214ffcd3e7668da243cc4006759f6fe5f3c60bfe88ac10270000000000001976a91492fc13573caf1bd38bd65738428406f4af80793a88ac00000000");
+    /// let txid = "7bdc016701e4c5d7ec34e99954ec3921140728d2c58b1da3cf6aa34c760d8a47";
+    /// let txb = TxBuilder::from_bytes(&hex, parser).unwrap();
+    /// assert_eq!(txb.txid(), txid);
+    /// ```
+    pub fn from_bytes(bytes: &[u8], address_parser: F) -> Result<TxBuilder<F>> {
+        Ok(TxBuilder {
+            tx: Transaction::from_bytes(bytes)?,
+            prev_outputs: HashMap::new(),
+            fork_id: 0,
+            address_parser,
+        })
     }
 
     /// Set transaction version (default: 2)
@@ -99,7 +111,7 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// assert_eq!(txb.to_vec()[0..4], (0x01 as u32).to_le_bytes());
     /// ```
     pub fn set_version(&mut self, v: u32) {
-        self.version = v;
+        self.tx.version = v;
     }
 
     /// Set fork id (default: 0)
@@ -126,7 +138,7 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// # let prev_index = 1;
     /// # let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
     /// # let prev_value = 100_000;
-    /// # txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
+    /// # txb.add_input(prev_txid, prev_index, Some(prev_value), Some(&prev_script), None).unwrap();
     /// # txb.add_address_output(11000, "qqntvyp35r7l8julzldgh8qlc49x8rpkjyh4nz5ty3").unwrap();
     /// # txb.add_address_output(88757, "qqny0aeaayxca8d4khmh68xp44d0aqwk3sk3zpzs70").unwrap();
     /// # let script_sig = p2pkh::script_sig(
@@ -136,7 +148,7 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// # txb.set_script_sig(0, &script_sig).unwrap();
     /// let hash_type = sig_hash::ALL | sig_hash::FORKID;
     /// txb.set_fork_id(1);
-    /// let sighash = txb.witness_v0_hash(hash_type, 0).unwrap();
+    /// let sighash = txb.witness_v0_hash(hash_type, 0, None, None).unwrap();
     /// assert_eq!(sighash, hex!("e99f87c70a16dfa390ea0ddd0748709a8548b7b97c62f91754d74264c687db62"));
     /// ```
     pub fn set_fork_id(&mut self, id: u32) {
@@ -150,10 +162,15 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// * `value` - previous value
     /// * `script` - previous `scriptPubKey`
     /// * `sequence_no`- sequence number or `None` 
-    pub fn add_input(&mut self, txid: &str, index: u32, value: u64, script: &[u8], sequence_no: Option<u32>) -> Result<()> {
+    pub fn add_input(&mut self, txid: &str, index: u32, value: Option<u64>, script: Option<&[u8]>, sequence_no: Option<u32>) -> Result<()> {
         let txid = uint256::try_from(txid)?;
-        self.inputs.push(Input::new(&txid.into(), index, sequence_no));
-        self.prev_outputs.push(Output::new(value, script));
+        self.tx.inputs.push(Input::new(&txid.into(), index, sequence_no));
+        if value.is_some() && script.is_some() {
+            self.prev_outputs.insert(
+                self.tx.inputs.len() - 1,
+                Output::new(value.unwrap(), script.unwrap())
+            );
+        }
 
         Ok(())
     }
@@ -163,7 +180,7 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// * `index` - previous txout-index
     /// * `script` - `scriptSig`
     pub fn set_script_sig(&mut self, index: usize, script: &[u8]) -> Result<()> {
-        let input = self.inputs.get_mut(index).ok_or_else(|| Error::InvalidIndex(index))?;
+        let input = self.tx.inputs.get_mut(index).ok_or_else(|| Error::InvalidIndex(index))?;
         input.set_script(script);
         Ok(())
     }
@@ -230,14 +247,14 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// assert_eq!(&txb.to_vec()[15..40], script);
     /// ```
     pub fn add_output(&mut self, value: u64, script: &[u8]) {
-        self.outputs.push(Output::new(value, script));
+        self.tx.outputs.push(Output::new(value, script));
     }
 
     /// Convert to `Vec<u8>`
     /// # Returns
     /// * serialized transaction
     pub fn to_vec(&self) -> Vec<u8> {
-        Vec::from(self)
+        Vec::from(&self.tx)
     }
 
     /// Get digest according to bip143  
@@ -245,9 +262,9 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
     /// # Arguments
     /// * `hash_type` - sighash type
     /// * `index` - input index
-    pub fn witness_v0_hash(&self, hash_type: u32, index: u32) -> Result<Vec<u8>> {
+    pub fn witness_v0_hash(&self, hash_type: u32, index: u32, prev_value: Option<u64>, prev_script: Option<&[u8]>) -> Result<Vec<u8>> {
         let hash_prev_outs = if !hash_type.is_set(sig_hash::ANYONECANPAY) {
-            let hasher = self.inputs.iter().fold(Sha256::new(), |hasher, i| {
+            let hasher = self.tx.inputs.iter().fold(Sha256::new(), |hasher, i| {
                 hasher.chain(i.prev_txid).chain(i.prev_index.to_le_bytes())
             });
             hash::hash256(hasher)
@@ -258,7 +275,7 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
         let hash_sequence = if !hash_type.is_set(sig_hash::ANYONECANPAY) && 
                                (hash_type & 0x1f) != sig_hash::SINGLE &&
                                (hash_type & 0x1f) != sig_hash::NONE {
-            let hasher = self.inputs.iter().fold(Sha256::new(), |hasher, i| {
+            let hasher = self.tx.inputs.iter().fold(Sha256::new(), |hasher, i| {
                 hasher.chain(i.sequence_no.to_le_bytes())
             });
             hash::hash256(hasher)
@@ -268,32 +285,39 @@ impl<F: Fn(&str) -> Option<(Vec<u8>, bool)>> TxBuilder<F> {
 
         let hash_outputs = if (hash_type & 0x1f) != sig_hash::SINGLE &&
                               (hash_type & 0x1f) != sig_hash::NONE {
-            let hasher = self.outputs.iter().fold(Sha256::new(), |hasher, o| {
+            let hasher = self.tx.outputs.iter().fold(Sha256::new(), |hasher, o| {
                 hasher.chain(o.to_vec())
             });
             hash::hash256(hasher)
         } else if (hash_type & 0x1f) == sig_hash::SINGLE &&
-                  index < self.outputs.len() as u32 {
-            let hasher = Sha256::new().chain(self.outputs[index as usize].to_vec());
+                  index < self.tx.outputs.len() as u32 {
+            let hasher = Sha256::new().chain(self.tx.outputs[index as usize].to_vec());
             hash::hash256(hasher)
         } else {
             vec![0; 32]
         };
 
-        let prev_output = self.prev_outputs.get(index as usize).ok_or_else(|| Error::InvalidIndex(index as usize))?;
-        let input = self.inputs.get(index as usize).ok_or_else(|| Error::InvalidIndex(index as usize))?;
+        let (prev_value, prev_script) = if prev_value.is_some() && prev_script.is_some() {
+            (prev_value.unwrap(), prev_script.unwrap())
+        } else if let Some(o) = self.prev_outputs.get(&(index as usize)) {
+            (o.value, &o.script[..])
+        } else {
+            return Err(Error::InvalidIndex(index as usize));
+        };
+
+        let input = self.tx.inputs.get(index as usize).ok_or_else(|| Error::InvalidIndex(index as usize))?;
 
         let hasher = Sha256::new()
-            .chain(self.version.to_le_bytes())
+            .chain(self.tx.version.to_le_bytes())
             .chain(hash_prev_outs)
             .chain(hash_sequence)
             .chain(input.prev_txid)
             .chain(input.prev_index.to_le_bytes())
-            .chain(encode(&[Script::Data(&prev_output.script)])?)
-            .chain(prev_output.value.to_le_bytes())
+            .chain(encode(&[Script::Data(&prev_script)])?)
+            .chain(prev_value.to_le_bytes())
             .chain(input.sequence_no.to_le_bytes())
             .chain(hash_outputs)
-            .chain(self.lock_time.to_le_bytes())
+            .chain(self.tx.lock_time.to_le_bytes())
             .chain(((self.fork_id << 8) | hash_type).to_le_bytes());
 
         Ok(hash::hash256(hasher))
@@ -333,7 +357,7 @@ mod tests {
         let prev_script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
         let prev_value = 100_000;
 
-        txb.add_input(prev_txid, prev_index, prev_value, &prev_script, None).unwrap();
+        txb.add_input(prev_txid, prev_index, Some(prev_value), Some(&prev_script), None).unwrap();
         txb.add_address_output(11000, "qqntvyp35r7l8julzldgh8qlc49x8rpkjyh4nz5ty3").unwrap();
         txb.add_address_output(88757, "qqny0aeaayxca8d4khmh68xp44d0aqwk3sk3zpzs70").unwrap();
 
@@ -344,7 +368,7 @@ mod tests {
         txb.set_script_sig(0, &script_sig).unwrap();
 
         let hash_type = sig_hash::ALL | sig_hash::FORKID;
-        let sighash = txb.witness_v0_hash(hash_type, 0).unwrap();
+        let sighash = txb.witness_v0_hash(hash_type, 0, None, None).unwrap();
 
         let txid = txb.txid();
 

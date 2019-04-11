@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "cash_tx_builder"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bch_addr 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
