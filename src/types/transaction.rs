@@ -1,13 +1,19 @@
+/// Outpoint
+pub mod outpoint;
+/// Transaction input
 pub mod input;
+/// Transaction output
 pub mod output;
 
-use input::Input;
-use output::Output;
+use std::convert::TryFrom;
+pub use outpoint::OutPoint;
+pub use input::Input;
+pub use output::Output;
 use super::var_int::VarInt;
 use super::error::{Error, Result};
 
 /// Bitcoin Cash transaction format
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Transaction {
     /// version no
     pub version: u32,
@@ -31,40 +37,29 @@ fn read_bytes<T: Default + AsMut<[u8]>>(v: &[u8]) -> Option<(T, &[u8])> {
 }
 
 fn read_var_int(v: &[u8]) -> Option<(u64, &[u8])> {
-    let vi = VarInt::from_slice(v)?;
+    let vi = VarInt::try_from(v).ok()?;
     let size = vi.len();
 
-    Some((vi.into_u64()?, &v[size..]))
+    Some((vi.into(), &v[size..]))
 }
 
 impl From<&Transaction> for Vec<u8> {
     fn from(tx: &Transaction) -> Vec<u8> {
         [
-            tx.version.to_le_bytes().to_vec(),
-            VarInt::from(tx.inputs.len() as u64).into(),
-            tx.inputs.iter().flat_map(|p| p.to_vec()).collect(),
-            VarInt::from(tx.outputs.len() as u64).into(),
-            tx.outputs.iter().flat_map(|p| p.to_vec()).collect(),
-            tx.lock_time.to_le_bytes().to_vec(),
+            &tx.version.to_le_bytes()[..],
+            &Vec::from(VarInt::from(tx.inputs.len() as u64)),
+            &tx.inputs.iter().flat_map(Input::to_vec).collect::<Vec<u8>>()[..],
+            &Vec::from(VarInt::from(tx.outputs.len() as u64)),
+            &tx.outputs.iter().flat_map(Output::to_vec).collect::<Vec<u8>>()[..],
+            &tx.lock_time.to_le_bytes(),
         ].concat()
     }
 }
 
-impl Transaction {
-    /// Construct new `Transaction`
-    pub fn new() -> Transaction {
-        Transaction {
-            version: 2,
-            inputs: vec![],
-            outputs: vec![],
-            lock_time: 0,
-        }
-    }
+impl TryFrom<&[u8]> for Transaction {
+    type Error = Error;
 
-    /// Construct `Transaction` from raw transaction
-    /// # Arguments
-    /// * `bytes` - raw transaction
-    pub fn from_bytes(bytes: &[u8]) -> Result<Transaction> {
+    fn try_from(bytes: &[u8]) -> Result<Transaction> {
         let len = bytes.len();
         let mut tx = Transaction::new();
 
@@ -98,7 +93,7 @@ impl Transaction {
             let sequence_no = u32::from_le_bytes(sequence_no);
 
             let mut input = Input::new(&txid, index, Some(sequence_no));
-            input.set_script(script);
+            input.script = script.to_vec();
             tx.inputs.push(input);
 
             read_pointer = p;
@@ -134,5 +129,36 @@ impl Transaction {
         tx.lock_time = lock_time;
 
         Ok(tx)
+    }
+}
+
+impl Transaction {
+    /// Construct new `Transaction`
+    pub fn new() -> Transaction {
+        Transaction {
+            version: 2,
+            inputs: vec![],
+            outputs: vec![],
+            lock_time: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryFrom;
+    use super::*;
+
+    #[test]
+    fn test_convert() -> Result<()> {
+        let hex = hex!("0100000001339a4b15a25a107057a2aedba3655bfe9aca9dbfc8c4281adbff519764385569010000006a47304402204bdde4960e3733c64b8debc7c2ce609699e418de91e055594a7fd53f07e618b90220066f02e1f9a3e26e76ff4220de3b2b17dab63684c1fb9ef567ed2056ba3a96d44121030a7decd850db8d31c819bd34a0f9934f9c51e1f78718f59c886a3c8389c0d1deffffffff02d7f52d01000000001976a914214ffcd3e7668da243cc4006759f6fe5f3c60bfe88ac10270000000000001976a91492fc13573caf1bd38bd65738428406f4af80793a88ac00000000");
+
+        let tx = Transaction::try_from(&hex[..])?;
+
+        let tx_hex: Vec<u8> = (&tx).into();
+
+        assert_eq!(tx_hex, hex.to_vec());
+
+        Ok(())
     }
 }

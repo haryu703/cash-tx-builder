@@ -1,7 +1,7 @@
 use std::result;
 
 use failure::Fail;
-use hex;
+use super::types;
 
 /// Alias of `Result` used by cash_tx_builder.
 pub type Result<T> = result::Result<T, Error>;
@@ -27,22 +27,15 @@ pub enum Error {
     #[fail(display = "Invalid address: {}", 0)]
     InvalidAddress(String),
 
-    /// Transaction parse error
-    /// # Arguments
-    /// * error index
-    /// * raw transaction
-    #[fail(display = "Transaction parse error: at {}, {:?}", 0, 1)]
-    TxParseError(usize, Vec<u8>),
-
-    /// hex library's error.
+    /// type error
     /// # Arguments
     /// * error
-    #[fail(display = "hex error: {}", 0)]
-    HexError(hex::FromHexError),
+    #[fail(display = "type error: {}", 0)]
+    TypeError(types::TypeError),
 }
 
-impl From<hex::FromHexError> for Error {
-    fn from(err: hex::FromHexError) -> Error {
-        Error::HexError(err)
+impl From<types::TypeError> for Error {
+    fn from(err: types::TypeError) -> Error {
+        Error::TypeError(err)
     }
 }
