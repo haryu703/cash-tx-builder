@@ -14,8 +14,9 @@ use super::super::error::{Result};
 /// # #[macro_use] extern crate hex_literal;
 /// # use cash_tx_builder::script::p2sh::script_pub_key;
 /// let hash = hex!("023a723c9e8b8297d84f6ab7dc08784c36b0729a");
-/// let script_pub_key = script_pub_key(&hash).unwrap();
+/// let script_pub_key = script_pub_key(&hash)?;
 /// assert_eq!(script_pub_key, hex!("a914023a723c9e8b8297d84f6ab7dc08784c36b0729a87"));
+/// # Ok::<(), cash_tx_builder::Error>(())
 /// ```
 pub fn script_pub_key(hash: &[u8]) -> Result<Vec<u8>> {
     encode(&[
