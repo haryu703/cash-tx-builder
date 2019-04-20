@@ -91,7 +91,7 @@ pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
 /// Convert address to `scriptPubKey`
 /// # Arguments
 /// * `address` - bitcoin address
-/// * `converter` - address converter
+/// * `parser` - address parser
 /// # Returns
 /// * `scriptPubKey`
 /// # Example
