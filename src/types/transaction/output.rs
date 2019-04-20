@@ -1,6 +1,8 @@
 use super::super::var_int::VarInt;
 
-#[derive(Debug)]
+/// Transaction output
+#[allow(missing_docs)]
+#[derive(Debug, Clone)]
 pub struct Output {
     pub value: u64,
     pub script: Vec<u8>,
@@ -10,13 +12,17 @@ impl From<&Output> for Vec<u8> {
     fn from(o: &Output) -> Vec<u8> {
         [
             &o.value.to_le_bytes()[..],
-            &VarInt::from(o.script.len() as u64).into_vec(),
+            &Vec::from(VarInt::from(o.script.len() as u64)),
             &o.script,
         ].concat()
     }
 }
 
 impl Output {
+    /// Construct `Output`
+    /// # Arguments
+    /// * `value` - satoshi
+    /// * `script` - `scriptPubKey`
     pub fn new(value: u64, script: &[u8]) -> Output {
         Output {
             value,
@@ -24,6 +30,7 @@ impl Output {
         }
     }
 
+    /// Convert to `Vec<u8>`
     pub fn to_vec(&self) -> Vec<u8> {
         self.into()
     }

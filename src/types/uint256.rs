@@ -1,13 +1,16 @@
+use std::str::FromStr;
 use hex;
-use super::error::Result;
 
+use super::error::{Error, Result};
+
+/// 256 bit unsigned value
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct uint256(pub [u8; 32]);
 
-impl<T: AsRef<[u8]>> From<T> for uint256 {
-    fn from(v: T) -> uint256 {
-        let v = v.as_ref();
+// TODO: use AsRef<[u8]>
+impl From<&[u8]> for uint256 {
+    fn from(v: &[u8]) -> uint256 {
         let mut array = [0; 32];
 
         let src = if v.len() > 32 {
@@ -38,15 +41,18 @@ impl From<uint256> for String {
     }
 }
 
-impl uint256 {
-    pub fn new() -> uint256 {
-        uint256([0; 32])
+impl AsRef<[u8]> for uint256 {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
     }
+}
 
-    pub fn try_from<T: AsRef<str>>(s: T) -> Result<uint256> {
-        let s = s.as_ref();
+impl FromStr for uint256 {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
         let v = hex::decode(s)?.into_iter().rev().collect::<Vec<u8>>();
 
-        Ok(v.into())
+        Ok(v[..].into())
     }
 }

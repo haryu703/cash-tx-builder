@@ -70,8 +70,9 @@ fn push_data(data: &[u8], v: &mut Vec<u8>) -> Result<()> {
 ///     Script::OpCode(OP_EQUALVERIFY),
 ///     Script::OpCode(OP_CHECKSIG),
 /// ];
-/// let encoded = encode(&scripts).unwrap();
+/// let encoded = encode(&scripts)?;
 /// assert_eq!(encoded, hex!("76a914023a723c9e8b8297d84f6ab7dc08784c36b0729a88ac"));
+/// # Ok::<(), cash_tx_builder::Error>(())
 /// ```
 pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
     scripts.iter().try_fold(Vec::new(), |mut v, script| {
@@ -90,7 +91,7 @@ pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
 /// Convert address to `scriptPubKey`
 /// # Arguments
 /// * `address` - bitcoin address
-/// * `converter` - address converter
+/// * `parser` - address parser
 /// # Returns
 /// * `scriptPubKey`
 /// # Example
@@ -112,11 +113,12 @@ pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
 /// let p2pkh = "bitcoincash:qph5kuz78czq00e3t85ugpgd7xmer5kr7c5f6jdpwk";
 /// let p2sh = "bitcoincash:pph5kuz78czq00e3t85ugpgd7xmer5kr7crv8a2z4t";
 /// 
-/// let p2pkh_script = address_to_script(p2pkh, &parser).unwrap();
-/// let p2sh_script = address_to_script(p2sh, &parser).unwrap();
+/// let p2pkh_script = address_to_script(p2pkh, &parser)?;
+/// let p2sh_script = address_to_script(p2sh, &parser)?;
 /// 
 /// assert_eq!(p2pkh_script, hex!("76a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f688ac"));
 /// assert_eq!(p2sh_script, hex!("a9146f4b705e3e0407bf3159e9c4050df1b791d2c3f687"));
+/// # Ok::<(), cash_tx_builder::Error>(())
 /// ```
 pub fn address_to_script<F>(address: &str, parser: &F) -> Result<Vec<u8>>
     where F: Fn(&str) -> Option<(Vec<u8>, bool)> {
@@ -139,8 +141,9 @@ pub fn address_to_script<F>(address: &str, parser: &F) -> Result<Vec<u8>>
 /// # #[macro_use] extern crate hex_literal;
 /// # use cash_tx_builder::script::null_data_script;
 /// let data = hex!("1234567890");
-/// let script_pub_key = null_data_script(&data).unwrap();
+/// let script_pub_key = null_data_script(&data)?;
 /// assert_eq!(script_pub_key, hex!("6a051234567890"));
+/// # Ok::<(), cash_tx_builder::Error>(())
 /// ```
 pub fn null_data_script(data: &[u8]) -> Result<Vec<u8>> {
     encode(&[
@@ -155,7 +158,7 @@ mod tests {
     use bch_addr::{AddressType, Converter};
 
     #[test]
-    fn get_p2pkh() {
+    fn get_p2pkh() -> Result<()> {
         let converter = Converter::new();
         let parser = |address: &str| {
             let parsed = converter.parse(address).ok();
@@ -166,7 +169,9 @@ mod tests {
                 None => None
             }
         };
-        let script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser).unwrap();
+        let script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser)?;
         assert_eq!(script, hex!("76a9143424f163208a3b676fa0ec17034f0f290322a2a688ac"));
+
+        Ok(())
     }
 }
