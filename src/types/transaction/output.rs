@@ -2,7 +2,7 @@ use super::super::var_int::VarInt;
 
 /// Transaction output
 #[allow(missing_docs)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Output {
     pub value: u64,
     pub script: Vec<u8>,

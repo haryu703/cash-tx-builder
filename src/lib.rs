@@ -57,6 +57,10 @@ mod bit_util;
 /// Types for transaction
 pub mod types;
 
+#[cfg(feature = "serde")]
+#[macro_use]
+extern crate serde;
+
 #[cfg(test)]
 #[macro_use]
 extern crate hex_literal;

@@ -13,7 +13,7 @@ use super::var_int::VarInt;
 use super::error::{Error, Result};
 
 /// Bitcoin Cash transaction format
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct Transaction {
     /// version no
     pub version: u32,

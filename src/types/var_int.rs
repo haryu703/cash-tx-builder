@@ -3,7 +3,8 @@ use std::convert::{TryFrom, TryInto};
 use super::error::{Result, Error};
 
 /// Variable length integer
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VarInt(u64);
 
 impl From<VarInt> for Vec<u8> {
@@ -80,7 +81,7 @@ impl TryFrom<&[u8]> for VarInt {
 #[allow(clippy::len_without_is_empty)]
 impl VarInt {
     /// Return serialized length
-    pub fn len(&self) -> usize {
+    pub fn len(self) -> usize {
         match self.0 {
             0x00..=0xfc => 1,
             0xfd..=0xffff => 3,
@@ -114,6 +115,23 @@ mod tests {
             let vi: u64 = VarInt::try_from(*v)?.into();
             assert_eq!(vi, *n);
         }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "serde")]
+    use serde_json;
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serde() -> std::result::Result<(), serde_json::error::Error> {
+        let vi = VarInt::from(10);
+
+        let serialized = serde_json::to_string(&vi)?;
+        assert_eq!(serialized, "10");
+
+        let deserialized: VarInt = serde_json::from_str(&serialized)?;
+        assert_eq!(deserialized, vi);
 
         Ok(())
     }
