@@ -1,6 +1,6 @@
 [package]
 name = "cash_tx_builder"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["haryu703"]
 edition = "2018"
 
