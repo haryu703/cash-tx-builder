@@ -9,6 +9,12 @@ pub type Result<T> = result::Result<T, Error>;
 /// Errors
 #[derive(Debug, Fail)]
 pub enum Error {
+    /// Invalid opcode.
+    /// # Arguments
+    /// * opcode
+    #[fail(display = "Invalid opcode: {}", 0)]
+    InvalidOpCode(u8),
+
     /// Invalid input/output index.
     /// # Arguments
     /// * index

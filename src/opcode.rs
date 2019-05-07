@@ -1,7 +1,8 @@
 #![allow(non_camel_case_types, missing_docs)]
+use std::fmt;
 
 /// [Script opcodes](https://github.com/Bitcoin-ABC/bitcoin-abc/blob/master/src/script/script.h#L42)
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, FromPrimitive, ToPrimitive)]
 pub enum OpCode {
     // push value
     OP_0 = 0x00,
@@ -153,9 +154,52 @@ pub enum OpCode {
     OP_INVALIDOPCODE = 0xff,
 }
 
+impl fmt::Display for OpCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            OpCode::OP_0        => Some("0"),
+            OpCode::OP_1NEGATE  => Some("-1"),
+            OpCode::OP_1        => Some("1"),
+            OpCode::OP_2        => Some("2"),
+            OpCode::OP_3        => Some("3"),
+            OpCode::OP_4        => Some("4"),
+            OpCode::OP_5        => Some("5"),
+            OpCode::OP_6        => Some("6"),
+            OpCode::OP_7        => Some("7"),
+            OpCode::OP_8        => Some("8"),
+            OpCode::OP_9        => Some("9"),
+            OpCode::OP_10       => Some("10"),
+            OpCode::OP_11       => Some("11"),
+            OpCode::OP_12       => Some("12"),
+            OpCode::OP_13       => Some("13"),
+            OpCode::OP_14       => Some("14"),
+            OpCode::OP_15       => Some("15"),
+            OpCode::OP_16       => Some("16"),
+            _ => None,
+        };
+
+        if let Some(s) = s {
+            write!(f, "{}", s)
+        } else {
+            write!(f, "{:?}", self)
+        }
+    }
+}
+
 impl OpCode {
     pub const OP_FALSE: OpCode = OpCode::OP_0;
     pub const OP_TRUE: OpCode = OpCode::OP_1;
     pub const OP_NOP2: OpCode = OpCode::OP_CHECKLOCKTIMEVERIFY;
     pub const OP_NOP3: OpCode = OpCode::OP_CHECKSEQUENCEVERIFY;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn to_str() {
+        assert_eq!(OpCode::OP_0.to_string(), "0");
+        assert_eq!(OpCode::OP_PUSHDATA1.to_string(), "OP_PUSHDATA1");
+    }
 }

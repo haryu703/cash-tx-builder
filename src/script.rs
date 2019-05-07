@@ -3,12 +3,14 @@
 pub mod p2pkh;
 pub mod p2sh;
 
+use num_traits::FromPrimitive;
+use std::convert::TryInto;
 use super::opcode::OpCode;
 use OpCode::*;
 use super::error::{Error, Result};
 
 /// Element to build bitcoin script
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Script<'a> {
     /// op code
     OpCode(OpCode),
@@ -28,6 +30,9 @@ fn push_data(data: &[u8], v: &mut Vec<u8>) -> Result<()> {
         },
         1 if data[0] <= 16 => {
             v.push(DATA_OPCODE[data[0] as usize] as u8);
+        },
+        1 if data[0] == 0x81 => {
+            v.push(OP_1NEGATE as u8);
         },
         l @ 0x00..=0x4b => {
             v.push(l as u8);
@@ -86,6 +91,73 @@ pub fn encode(scripts: &[Script<'_>]) -> Result<Vec<u8>> {
         };
         Ok(v)
     })
+}
+
+fn get_opcode(v: &[u8]) -> Option<(Script<'_>, &[u8])> {
+    let op = v.get(0)?;
+    let v = v.get(1..)?;
+
+    if *op <= 0x4b {
+        let len = *op as usize;
+        return Some((Script::Data(v.get(..len)?), v.get(len..)?));
+    }
+
+    match OpCode::from_u8(*op) {
+        Some(OP_PUSHDATA1) => {
+            let len = *v.get(0)? as usize;
+            let v = v.get(1..)?;
+            Some((Script::Data(v.get(..len)?), v.get(len..)?))
+        },
+        Some(OP_PUSHDATA2) => {
+            let len = u16::from_le_bytes(v.get(..2)?.try_into().ok()?) as usize;
+            let v = v.get(2..)?;
+            Some((Script::Data(v.get(..len)?), v.get(len..)?))
+        },
+        Some(OP_PUSHDATA4) => {
+            let len = u32::from_le_bytes(v.get(..4)?.try_into().ok()?) as usize;
+            let v = v.get(4..)?;
+            Some((Script::Data(v.get(..len)?), v.get(len..)?))
+        },
+        Some(op) => Some((Script::OpCode(op), v)),
+        None => None,
+    }
+}
+
+/// Decode raw script to array of `Script`
+/// # Arguments
+/// * v - raw script
+/// # Returns
+/// * array of `Script`
+/// # Example
+/// ```
+/// # #[macro_use] extern crate hex_literal;
+/// # use cash_tx_builder::script::{Script, decode};
+/// # use cash_tx_builder::OpCode::*;
+/// let hex = hex!("76a914023a723c9e8b8297d84f6ab7dc08784c36b0729a88ac");
+/// let scripts = [
+///     Script::OpCode(OP_DUP),
+///     Script::OpCode(OP_HASH160),
+///     Script::Data(&hex!("023a723c9e8b8297d84f6ab7dc08784c36b0729a")),
+///     Script::OpCode(OP_EQUALVERIFY),
+///     Script::OpCode(OP_CHECKSIG),
+/// ];
+/// let decoded = decode(&hex)?;
+/// assert_eq!(decoded, scripts);
+/// # Ok::<(), cash_tx_builder::Error>(())
+/// ```
+pub fn decode(v: &[u8]) -> Result<Vec<Script<'_>>> {
+    let mut scripts = Vec::new();
+    let mut cur = v;
+    while !cur.is_empty() {
+        if let Some((script, n)) = get_opcode(cur) {
+            scripts.push(script);
+            cur = n;
+        } else {
+            return Err(Error::InvalidOpCode(cur[0]));
+        }
+    }
+
+    Ok(scripts)
 }
 
 /// Convert address to `scriptPubKey`
@@ -171,6 +243,23 @@ mod tests {
         };
         let script = address_to_script("qq6zfutryz9rkem05rkpwq60pu5sxg4z5c330k4w75", &parser)?;
         assert_eq!(script, hex!("76a9143424f163208a3b676fa0ec17034f0f290322a2a688ac"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn decode_test() -> Result<()> {
+        let hex = hex!("76a914023a723c9e8b8297d84f6ab7dc08784c36b0729a88ac");
+        let scripts = [
+            Script::OpCode(OP_DUP),
+            Script::OpCode(OP_HASH160),
+            Script::Data(&hex!("023a723c9e8b8297d84f6ab7dc08784c36b0729a")),
+            Script::OpCode(OP_EQUALVERIFY),
+            Script::OpCode(OP_CHECKSIG),
+        ];
+
+        let decoded = decode(&hex)?;
+        assert_eq!(decoded, scripts);
 
         Ok(())
     }
